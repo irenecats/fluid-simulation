@@ -37,13 +37,28 @@ let config = {
   PRESSURE: 0,
   PRESSURE_ITERATIONS: 20,
   CURL: 0,
-  SPLAT_RADIUS: 0.5,
+  SPLAT_RADIUS: 0.6,
   SPLAT_FORCE: 5000,
-  COLORFUL: true,
-  COLOR_UPDATE_SPEED: 10,
   PAUSED: false,
-  BACK_COLOR: { r: 0, g: 0, b: 0 },
-  TRANSPARENT: false,
+  BACK_COLOR: { r: 7, g: 26, b: 69 },
+  COLOR_UPDATE_SPEED: 0.75,
+  CURRENT_COLOR: 0,
+  COLOR_PALETTE: [
+    { r: 0.057, g: 0.31, b: 1 },
+    { r: 0.67, g: 0.38, b: 1 },
+    { r: 0.76, g: 0.46, b: 1 },
+    { r: 0.85, g: 0.55, b: 1 },
+    { r: 0.95, g: 0.63, b: 1 },
+    { r: 0.98, g: 0.77, b: 0.85 },
+    { r: 1, g: 0.89, b: 0.7 },
+    { r: 0.68, g: 0.95, b: 0.77 },
+    { r: 0.35, g: 1, b: 0.88 },
+    { r: 0.33, g: 0.69, b: 0.85 },
+    { r: 0.31, g: 0.38, b: 0.87 },
+    { r: 0.22, g: 0.25, b: 0.67 },
+    { r: 0.12, g: 0.12, b: 0.46 },
+    { r: 0.35, g: 0.2, b: 0.73 },
+  ],
 };
 
 function pointerPrototype() {
@@ -980,7 +995,6 @@ function updateKeywords() {
 
 updateKeywords();
 initFramebuffers();
-multipleSplats(parseInt(Math.random() * 20) + 5);
 
 let lastUpdateTime = Date.now();
 let colorUpdateTimer = 0.0;
@@ -1016,14 +1030,14 @@ function resizeCanvas() {
 }
 
 function updateColors(dt) {
-  if (!config.COLORFUL) return;
-
   colorUpdateTimer += dt * config.COLOR_UPDATE_SPEED;
   if (colorUpdateTimer >= 1) {
     colorUpdateTimer = wrap(colorUpdateTimer, 0, 1);
     pointers.forEach((p) => {
       p.color = generateColor();
     });
+    config.CURRENT_COLOR =
+      ++config.CURRENT_COLOR % (config.COLOR_PALETTE.length - 1);
   }
 }
 
@@ -1148,15 +1162,10 @@ function step(dt) {
 }
 
 function render(target) {
-  if (target == null || !config.TRANSPARENT) {
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.enable(gl.BLEND);
-  } else {
-    gl.disable(gl.BLEND);
-  }
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.enable(gl.BLEND);
 
-  if (!config.TRANSPARENT) drawColor(target, normalizeColor(config.BACK_COLOR));
-  if (target == null && config.TRANSPARENT) drawCheckerboard(target);
+  drawColor(target, normalizeColor(config.BACK_COLOR));
   drawDisplay(target);
 }
 
@@ -1340,13 +1349,17 @@ function correctDeltaY(delta) {
   return delta;
 }
 
-// TODO: Create a list of colors and iterate them
 function generateColor() {
-  let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+  const color = config.COLOR_PALETTE.at(config.CURRENT_COLOR);
+  let c = { r: color.r, g: color.g, b: color.b };
   c.r *= 0.15;
   c.g *= 0.15;
   c.b *= 0.15;
   return c;
+}
+
+function getRandNum(min, max) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
 function HSVtoRGB(h, s, v) {
