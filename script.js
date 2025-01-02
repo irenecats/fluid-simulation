@@ -38,7 +38,6 @@ function pointerPrototype() {
   this.prevTexcoordY = 0;
   this.deltaX = 0;
   this.deltaY = 0;
-  this.down = false;
   this.moved = false;
   this.color = generateColor();
 }
@@ -394,12 +393,6 @@ const blit = (() => {
   };
 })();
 
-function CHECK_FRAMEBUFFER_STATUS() {
-  let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (status != gl.FRAMEBUFFER_COMPLETE)
-    console.trace("Framebuffer error: " + status);
-}
-
 let dye;
 let velocity;
 let divergence;
@@ -598,48 +591,6 @@ function resizeDoubleFBO(target, w, h, internalFormat, format, type, param) {
   return target;
 }
 
-function createTextureAsync(url) {
-  let texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGB,
-    1,
-    1,
-    0,
-    gl.RGB,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([255, 255, 255])
-  );
-
-  let obj = {
-    texture,
-    width: 1,
-    height: 1,
-    attach(id) {
-      gl.activeTexture(gl.TEXTURE0 + id);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      return id;
-    },
-  };
-
-  let image = new Image();
-  image.onload = () => {
-    obj.width = image.width;
-    obj.height = image.height;
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
-  };
-  image.src = url;
-
-  return obj;
-}
-
 function updateKeywords() {
   let displayKeywords = [];
   displayMaterial.setKeywords(displayKeywords);
@@ -716,12 +667,6 @@ function updatePosition(dt) {
       config.DEFAULT_PATH.length - 1
     );
   }
-}
-
-function interpolate(a, b, frac) {
-  var nx = a.x + (b.x - a.x) * frac;
-  var ny = a.y + (b.y - a.y) * frac;
-  return { x: nx, y: ny };
 }
 
 function applyInputs() {
@@ -854,15 +799,6 @@ function drawColor(target, color) {
   blit(target);
 }
 
-function drawCheckerboard(target) {
-  checkerboardProgram.bind();
-  gl.uniform1f(
-    checkerboardProgram.uniforms.aspectRatio,
-    canvas.width / canvas.height
-  );
-  blit(target);
-}
-
 function drawDisplay(target) {
   displayMaterial.bind();
   gl.uniform1i(displayMaterial.uniforms.uTexture, dye.read.attach(0));
@@ -886,20 +822,6 @@ function splatPointer(pointer) {
   let dx = pointer.deltaX * config.SPLAT_FORCE;
   let dy = pointer.deltaY * config.SPLAT_FORCE;
   splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
-}
-
-function multipleSplats(amount) {
-  for (let i = 0; i < amount; i++) {
-    const color = generateColor();
-    color.r *= 10.0;
-    color.g *= 10.0;
-    color.b *= 10.0;
-    const x = Math.random();
-    const y = Math.random();
-    const dx = 1000 * (Math.random() - 0.5);
-    const dy = 1000 * (Math.random() - 0.5);
-    splat(x, y, dx, dy, color);
-  }
 }
 
 function splat(x, y, dx, dy, color) {
@@ -927,18 +849,6 @@ function correctRadius(radius) {
   return radius;
 }
 
-function updatePointerDownData(pointer, id, posX, posY) {
-  pointer.id = id;
-  pointer.moved = false;
-  pointer.texcoordX = posX / canvas.width;
-  pointer.texcoordY = 1.0 - posY / canvas.height;
-  pointer.prevTexcoordX = pointer.texcoordX;
-  pointer.prevTexcoordY = pointer.texcoordY;
-  pointer.deltaX = 0;
-  pointer.deltaY = 0;
-  pointer.color = generateColor();
-}
-
 function updatePointerMoveData(pointer, posX, posY) {
   pointer.prevTexcoordX = pointer.texcoordX;
   pointer.prevTexcoordY = pointer.texcoordY;
@@ -947,10 +857,6 @@ function updatePointerMoveData(pointer, posX, posY) {
   pointer.deltaX = correctDeltaX(pointer.texcoordX - pointer.prevTexcoordX);
   pointer.deltaY = correctDeltaY(pointer.texcoordY - pointer.prevTexcoordY);
   pointer.moved = Math.abs(pointer.deltaX) > 0 || Math.abs(pointer.deltaY) > 0;
-}
-
-function updatePointerUpData(pointer) {
-  pointer.down = false;
 }
 
 function correctDeltaX(delta) {
@@ -972,46 +878,6 @@ function generateColor() {
   c.g *= 0.15;
   c.b *= 0.15;
   return c;
-}
-
-function getRandNum(min, max) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-function HSVtoRGB(h, s, v) {
-  let r, g, b, i, f, p, q, t;
-  i = Math.floor(h * 6);
-  f = h * 6 - i;
-  p = v * (1 - s);
-  q = v * (1 - f * s);
-  t = v * (1 - (1 - f) * s);
-
-  switch (i % 6) {
-    case 0:
-      (r = v), (g = t), (b = p);
-      break;
-    case 1:
-      (r = q), (g = v), (b = p);
-      break;
-    case 2:
-      (r = p), (g = v), (b = t);
-      break;
-    case 3:
-      (r = p), (g = q), (b = v);
-      break;
-    case 4:
-      (r = t), (g = p), (b = v);
-      break;
-    case 5:
-      (r = v), (g = p), (b = q);
-      break;
-  }
-
-  return {
-    r,
-    g,
-    b,
-  };
 }
 
 function normalizeColor(input) {
@@ -1039,13 +905,6 @@ function getResolution(resolution) {
   if (gl.drawingBufferWidth > gl.drawingBufferHeight)
     return { width: max, height: min };
   else return { width: min, height: max };
-}
-
-function getTextureScale(texture, width, height) {
-  return {
-    x: width / texture.width,
-    y: height / texture.height,
-  };
 }
 
 function scaleByPixelRatio(input) {
