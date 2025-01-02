@@ -40,6 +40,7 @@ let config = {
   SPLAT_RADIUS: 0.6,
   SPLAT_FORCE: 5000,
   PAUSED: false,
+  MOUSE_STOP_TIMER: 300,
   BACK_COLOR: { r: 7, g: 26, b: 69 },
   COLOR_UPDATE_SPEED: 0.75,
   CURRENT_COLOR: 0,
@@ -58,6 +59,13 @@ let config = {
     { r: 0.22, g: 0.25, b: 0.67 },
     { r: 0.12, g: 0.12, b: 0.46 },
     { r: 0.35, g: 0.2, b: 0.73 },
+  ],
+  CURRENT_POSITION: 0,
+  DEFAULT_PATH: [
+    { x: 0.21, y: 0.27 },
+    { x: 0.57, y: 0.45 },
+    { x: 0.25, y: 0.51 },
+    { x: 0.67, y: 0.38 },
   ],
 };
 
@@ -998,12 +1006,16 @@ initFramebuffers();
 
 let lastUpdateTime = Date.now();
 let colorUpdateTimer = 0.0;
+let positionUpdateTimer = 0.0;
+let pointer = pointers.find((p) => p.id == -1);
+if (pointer == null) pointer = new pointerPrototype();
 update();
 
 function update() {
   const dt = calcDeltaTime();
   if (resizeCanvas()) initFramebuffers();
   updateColors(dt);
+  updatePosition(dt);
   applyInputs();
   if (!config.PAUSED) step(dt);
   render(null);
@@ -1041,6 +1053,33 @@ function updateColors(dt) {
   }
 }
 
+function updatePosition(dt) {
+  positionUpdateTimer += dt * config.COLOR_UPDATE_SPEED;
+  if (positionUpdateTimer >= 1) {
+    positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
+    const nextPos = config.DEFAULT_PATH[config.CURRENT_POSITION];
+    let x = window.innerWidth * nextPos.x;
+    let y = window.innerHeight * nextPos.y;
+    moveSquare(x, y);
+
+    let posX = scaleByPixelRatio(x);
+    let posY = scaleByPixelRatio(y);
+    updatePointerMoveData(pointer, posX, posY);
+
+    config.CURRENT_POSITION = wrap(
+      ++config.CURRENT_POSITION,
+      0,
+      config.DEFAULT_PATH.length - 1
+    );
+  }
+}
+/*
+  function interpolate(a, b, frac) {
+    var nx = a.x + (b.x - a.x) * frac;
+    var ny = a.y + (b.y - a.y) * frac;
+    return { x: nx, y: ny };
+  }
+*/
 function applyInputs() {
   if (splatStack.length > 0) multipleSplats(splatStack.pop());
 
@@ -1247,7 +1286,34 @@ function correctRadius(radius) {
   if (aspectRatio > 1) radius *= aspectRatio;
   return radius;
 }
+/*
+let timer;
 
+canvas.addEventListener("mousemove", (e) => {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(mouseStopped, config.MOUSE_STOP_sTIMER);
+
+  //console.log(e.offsetY);
+  //console.log(e.offsetX);
+  
+  let pointer = pointers[0];
+  let posX = scaleByPixelRatio(e.offsetX);
+  let posY = scaleByPixelRatio(e.offsetY);
+  updatePointerMoveData(pointer, posX, posY);
+  
+});
+
+
+
+function mouseStopped() {}
+*/
+let square = document.getElementsByTagName("div")[0];
+function moveSquare(x, y) {
+  square.style.left = `${x}px`;
+  square.style.top = `${y}px`;
+}
+
+/*
 canvas.addEventListener("mousedown", (e) => {
   let posX = scaleByPixelRatio(e.offsetX);
   let posY = scaleByPixelRatio(e.offsetY);
@@ -1267,7 +1333,8 @@ canvas.addEventListener("mousemove", (e) => {
 window.addEventListener("mouseup", () => {
   updatePointerUpData(pointers[0]);
 });
-
+*/
+/*
 canvas.addEventListener("touchstart", (e) => {
   e.preventDefault();
   const touches = e.targetTouches;
@@ -1304,7 +1371,7 @@ window.addEventListener("touchend", (e) => {
     updatePointerUpData(pointer);
   }
 });
-
+*/
 function updatePointerDownData(pointer, id, posX, posY) {
   pointer.id = id;
   pointer.down = true;
