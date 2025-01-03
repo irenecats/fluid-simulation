@@ -31,14 +31,13 @@ const canvas = document.getElementsByTagName("canvas")[0];
 resizeCanvas();
 
 function pointerPrototype() {
-  this.id = -1;
+  this.lastPos = { x: 0, y: 0 };
   this.texcoordX = 0;
   this.texcoordY = 0;
   this.prevTexcoordX = 0;
   this.prevTexcoordY = 0;
   this.deltaX = 0;
   this.deltaY = 0;
-  this.down = false;
   this.moved = false;
   this.color = generateColor();
 }
@@ -143,79 +142,12 @@ function supportRenderTextureFormat(gl, internalFormat, format, type) {
   return status == gl.FRAMEBUFFER_COMPLETE;
 }
 
-function isMobile() {
-  return /Mobi|Android/i.test(navigator.userAgent);
-}
-
-function captureScreenshot() {
-  let res = getResolution(config.CAPTURE_RESOLUTION);
-  let target = createFBO(
-    res.width,
-    res.height,
-    ext.formatRGBA.internalFormat,
-    ext.formatRGBA.format,
-    ext.halfFloatTexType,
-    gl.NEAREST
-  );
-  render(target);
-
-  let texture = framebufferToTexture(target);
-  texture = normalizeTexture(texture, target.width, target.height);
-
-  let captureCanvas = textureToCanvas(texture, target.width, target.height);
-  let datauri = captureCanvas.toDataURL();
-  downloadURI("fluid.png", datauri);
-  URL.revokeObjectURL(datauri);
-}
-
-function framebufferToTexture(target) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-  let length = target.width * target.height * 4;
-  let texture = new Float32Array(length);
-  gl.readPixels(0, 0, target.width, target.height, gl.RGBA, gl.FLOAT, texture);
-  return texture;
-}
-
-function normalizeTexture(texture, width, height) {
-  let result = new Uint8Array(texture.length);
-  let id = 0;
-  for (let i = height - 1; i >= 0; i--) {
-    for (let j = 0; j < width; j++) {
-      let nid = i * width * 4 + j * 4;
-      result[nid + 0] = clamp01(texture[id + 0]) * 255;
-      result[nid + 1] = clamp01(texture[id + 1]) * 255;
-      result[nid + 2] = clamp01(texture[id + 2]) * 255;
-      result[nid + 3] = clamp01(texture[id + 3]) * 255;
-      id += 4;
-    }
-  }
-  return result;
-}
-
 function clamp01(input) {
-  return Math.min(Math.max(input, 0), 1);
+  return clamp(input, 0, 1);
 }
 
-function textureToCanvas(texture, width, height) {
-  let captureCanvas = document.createElement("canvas");
-  let ctx = captureCanvas.getContext("2d");
-  captureCanvas.width = width;
-  captureCanvas.height = height;
-
-  let imageData = ctx.createImageData(width, height);
-  imageData.data.set(texture);
-  ctx.putImageData(imageData, 0, 0);
-
-  return captureCanvas;
-}
-
-function downloadURI(filename, uri) {
-  let link = document.createElement("a");
-  link.download = filename;
-  link.href = uri;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function clamp(input, min, max) {
+  return Math.min(Math.max(input, min), max);
 }
 
 class Material {
@@ -393,12 +325,6 @@ const blit = (() => {
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
   };
 })();
-
-function CHECK_FRAMEBUFFER_STATUS() {
-  let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (status != gl.FRAMEBUFFER_COMPLETE)
-    console.trace("Framebuffer error: " + status);
-}
 
 let dye;
 let velocity;
@@ -598,48 +524,6 @@ function resizeDoubleFBO(target, w, h, internalFormat, format, type, param) {
   return target;
 }
 
-function createTextureAsync(url) {
-  let texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGB,
-    1,
-    1,
-    0,
-    gl.RGB,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([255, 255, 255])
-  );
-
-  let obj = {
-    texture,
-    width: 1,
-    height: 1,
-    attach(id) {
-      gl.activeTexture(gl.TEXTURE0 + id);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      return id;
-    },
-  };
-
-  let image = new Image();
-  image.onload = () => {
-    obj.width = image.width;
-    obj.height = image.height;
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
-  };
-  image.src = url;
-
-  return obj;
-}
-
 function updateKeywords() {
   let displayKeywords = [];
   displayMaterial.setKeywords(displayKeywords);
@@ -656,13 +540,27 @@ if (pointer == null) pointer = new pointerPrototype();
 
 update();
 
+let timer;
+canvas.addEventListener("mousemove", (e) => {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(mouseStopped, config.MOUSE_STOP_TIMER);
+  config.FOLLOW_MOUSE = true;
+  config.MOUSE_POS = { x: e.offsetX, y: e.offsetY };
+});
+
+function mouseStopped() {
+  config.FOLLOW_MOUSE = false;
+  config.MOUSE_REACHED = false;
+  config.RETURN_TO_PATH = true;
+}
+
 function update() {
   const dt = calcDeltaTime();
   if (resizeCanvas()) initFramebuffers();
   updateColors(dt);
-  updatePosition(dt);
+  !config.FOLLOW_MOUSE ? updatePosition(dt) : updatePositionMouse(dt);
   applyInputs();
-  if (!config.PAUSED) step(dt);
+  step(dt);
   render(null);
   requestAnimationFrame(update);
 }
@@ -691,8 +589,8 @@ function updateColors(dt) {
   if (colorUpdateTimer >= 1) {
     colorUpdateTimer = wrap(colorUpdateTimer, 0, 1);
     pointer.color = generateColor();
-    config.CURRENT_COLOR_IDX = wrap(
-      ++config.CURRENT_COLOR_IDX,
+    config.COLOR_IDX = wrap(
+      ++config.COLOR_IDX,
       0,
       config.COLOR_PALETTE.length - 1
     );
@@ -700,28 +598,65 @@ function updateColors(dt) {
 }
 
 function updatePosition(dt) {
-  positionUpdateTimer += dt * config.POSITION_UPDATE_SPEED;
+  positionUpdateTimer += dt * config.POS_UPDATE_SPEED;
   if (positionUpdateTimer >= 1) {
     positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
 
-    const position = config.DEFAULT_PATH[config.CURRENT_POSITION_IDX];
-    const x = scaleByPixelRatio(position.x);
-    const y = scaleByPixelRatio(position.y);
+    if (
+      config.RETURN_TO_PATH &&
+      distance(pointer.lastPos, config.DEFAULT_PATH[config.PATH_IDX]) <=
+        config.MOUSE_SNAP_DISTANCE
+    ) {
+      config.RETURN_TO_PATH = false;
+    }
 
-    updatePointerMoveData(pointer, x, y);
-
-    config.CURRENT_POSITION_IDX = wrap(
-      ++config.CURRENT_POSITION_IDX,
-      0,
-      config.DEFAULT_PATH.length - 1
-    );
+    config.RETURN_TO_PATH
+      ? approachPosition(config.DEFAULT_PATH[config.PATH_IDX])
+      : followPath();
   }
 }
 
-function interpolate(a, b, frac) {
-  var nx = a.x + (b.x - a.x) * frac;
-  var ny = a.y + (b.y - a.y) * frac;
-  return { x: nx, y: ny };
+function updatePositionMouse(dt) {
+  positionUpdateTimer += dt * config.POS_UPDATE_SPEED;
+  if (positionUpdateTimer >= 1) {
+    positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
+    if (
+      !config.MOUSE_REACHED &&
+      distance(pointer.lastPos, config.MOUSE_POS) <= config.MOUSE_SNAP_DISTANCE
+    ) {
+      config.MOUSE_REACHED = true;
+    }
+
+    !config.MOUSE_REACHED
+      ? approachPosition(config.MOUSE_POS)
+      : followPosition(config.MOUSE_POS);
+  }
+}
+
+function followPath() {
+  followPosition(config.DEFAULT_PATH[config.PATH_IDX]);
+  config.PATH_IDX = wrap(++config.PATH_IDX, 0, config.DEFAULT_PATH.length - 1);
+}
+
+function followPosition(position) {
+  position.x = scaleByPixelRatio(position.x);
+  position.y = scaleByPixelRatio(position.y);
+
+  updatePointerMoveData(pointer, position.x, position.y);
+}
+
+function approachPosition(position) {
+  let effectToPos = createVector(pointer.lastPos, position);
+  effectToPos = unitVector(effectToPos);
+  effectToPos.x =
+    effectToPos.x * config.MOUSE_SNAP_DISTANCE + pointer.lastPos.x;
+  effectToPos.y =
+    effectToPos.y * config.MOUSE_SNAP_DISTANCE + pointer.lastPos.y;
+
+  const x = scaleByPixelRatio(effectToPos.x);
+  const y = scaleByPixelRatio(effectToPos.y);
+
+  updatePointerMoveData(pointer, x, y);
 }
 
 function applyInputs() {
@@ -854,15 +789,6 @@ function drawColor(target, color) {
   blit(target);
 }
 
-function drawCheckerboard(target) {
-  checkerboardProgram.bind();
-  gl.uniform1f(
-    checkerboardProgram.uniforms.aspectRatio,
-    canvas.width / canvas.height
-  );
-  blit(target);
-}
-
 function drawDisplay(target) {
   displayMaterial.bind();
   gl.uniform1i(displayMaterial.uniforms.uTexture, dye.read.attach(0));
@@ -886,20 +812,6 @@ function splatPointer(pointer) {
   let dx = pointer.deltaX * config.SPLAT_FORCE;
   let dy = pointer.deltaY * config.SPLAT_FORCE;
   splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
-}
-
-function multipleSplats(amount) {
-  for (let i = 0; i < amount; i++) {
-    const color = generateColor();
-    color.r *= 10.0;
-    color.g *= 10.0;
-    color.b *= 10.0;
-    const x = Math.random();
-    const y = Math.random();
-    const dx = 1000 * (Math.random() - 0.5);
-    const dy = 1000 * (Math.random() - 0.5);
-    splat(x, y, dx, dy, color);
-  }
 }
 
 function splat(x, y, dx, dy, color) {
@@ -927,19 +839,9 @@ function correctRadius(radius) {
   return radius;
 }
 
-function updatePointerDownData(pointer, id, posX, posY) {
-  pointer.id = id;
-  pointer.moved = false;
-  pointer.texcoordX = posX / canvas.width;
-  pointer.texcoordY = 1.0 - posY / canvas.height;
-  pointer.prevTexcoordX = pointer.texcoordX;
-  pointer.prevTexcoordY = pointer.texcoordY;
-  pointer.deltaX = 0;
-  pointer.deltaY = 0;
-  pointer.color = generateColor();
-}
-
 function updatePointerMoveData(pointer, posX, posY) {
+  setMousePos(posX, posY);
+  pointer.lastPos = { x: posX, y: posY };
   pointer.prevTexcoordX = pointer.texcoordX;
   pointer.prevTexcoordY = pointer.texcoordY;
   pointer.texcoordX = posX / canvas.width;
@@ -947,10 +849,6 @@ function updatePointerMoveData(pointer, posX, posY) {
   pointer.deltaX = correctDeltaX(pointer.texcoordX - pointer.prevTexcoordX);
   pointer.deltaY = correctDeltaY(pointer.texcoordY - pointer.prevTexcoordY);
   pointer.moved = Math.abs(pointer.deltaX) > 0 || Math.abs(pointer.deltaY) > 0;
-}
-
-function updatePointerUpData(pointer) {
-  pointer.down = false;
 }
 
 function correctDeltaX(delta) {
@@ -966,52 +864,12 @@ function correctDeltaY(delta) {
 }
 
 function generateColor() {
-  const color = config.COLOR_PALETTE.at(config.CURRENT_COLOR_IDX);
+  const color = config.COLOR_PALETTE.at(config.COLOR_IDX);
   let c = { r: color.r, g: color.g, b: color.b };
   c.r *= 0.15;
   c.g *= 0.15;
   c.b *= 0.15;
   return c;
-}
-
-function getRandNum(min, max) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-function HSVtoRGB(h, s, v) {
-  let r, g, b, i, f, p, q, t;
-  i = Math.floor(h * 6);
-  f = h * 6 - i;
-  p = v * (1 - s);
-  q = v * (1 - f * s);
-  t = v * (1 - (1 - f) * s);
-
-  switch (i % 6) {
-    case 0:
-      (r = v), (g = t), (b = p);
-      break;
-    case 1:
-      (r = q), (g = v), (b = p);
-      break;
-    case 2:
-      (r = p), (g = v), (b = t);
-      break;
-    case 3:
-      (r = p), (g = q), (b = v);
-      break;
-    case 4:
-      (r = t), (g = p), (b = v);
-      break;
-    case 5:
-      (r = v), (g = p), (b = q);
-      break;
-  }
-
-  return {
-    r,
-    g,
-    b,
-  };
 }
 
 function normalizeColor(input) {
@@ -1041,13 +899,6 @@ function getResolution(resolution) {
   else return { width: min, height: max };
 }
 
-function getTextureScale(texture, width, height) {
-  return {
-    x: width / texture.width,
-    y: height / texture.height,
-  };
-}
-
 function scaleByPixelRatio(input) {
   let pixelRatio = window.devicePixelRatio || 1;
   return Math.floor(input * pixelRatio);
@@ -1061,4 +912,30 @@ function hashCode(s) {
     hash |= 0; // Convert to 32bit integer
   }
   return hash;
+}
+
+const square = document.getElementsByTagName("div")[0];
+function setMousePos(x, y) {
+  square.style.left = `${x}px`;
+  square.style.top = `${y}px`;
+}
+
+function vectorSize(x, y) {
+  return Math.sqrt(x * x + y * y);
+}
+
+function unitVector(vector) {
+  const magnitude = vectorSize(vector.x, vector.y);
+  return { x: vector.x / magnitude, y: vector.y / magnitude };
+}
+
+function createVector(p1, p2) {
+  return { x: p2.x - p1.x, y: p2.y - p1.y };
+}
+
+function distance(p1, p2) {
+  let a = p1.x - p2.x;
+  let b = p1.y - p2.y;
+
+  return Math.sqrt(a * a + b * b);
 }
