@@ -610,33 +610,10 @@ function updatePosition(dt) {
       config.RETURN_TO_PATH = false;
     }
 
-    config.RETURN_TO_PATH ? approachPath() : followPath();
+    config.RETURN_TO_PATH
+      ? approachPosition(config.DEFAULT_PATH[config.PATH_IDX])
+      : followPath();
   }
-}
-
-function approachPath() {
-  let effectToPath = createVector(
-    pointer.lastPos,
-    config.DEFAULT_PATH[config.PATH_IDX]
-  );
-  effectToPath = unitVector(effectToPath);
-  effectToPath.x = effectToPath.x * 10 + pointer.lastPos.x;
-  effectToPath.y = effectToPath.y * 10 + pointer.lastPos.y;
-
-  const x = scaleByPixelRatio(effectToPath.x);
-  const y = scaleByPixelRatio(effectToPath.y);
-
-  updatePointerMoveData(pointer, x, y);
-}
-
-function followPath() {
-  const position = config.DEFAULT_PATH[config.PATH_IDX];
-  const x = scaleByPixelRatio(position.x);
-  const y = scaleByPixelRatio(position.y);
-
-  updatePointerMoveData(pointer, x, y);
-
-  config.PATH_IDX = wrap(++config.PATH_IDX, 0, config.DEFAULT_PATH.length - 1);
 }
 
 function updatePositionMouse(dt) {
@@ -650,28 +627,36 @@ function updatePositionMouse(dt) {
       config.MOUSE_REACHED = true;
     }
 
-    !config.MOUSE_REACHED ? approachMouse() : followMouse();
+    !config.MOUSE_REACHED
+      ? approachPosition(config.MOUSE_POS)
+      : followPosition(config.MOUSE_POS);
   }
 }
 
-function approachMouse() {
-  let effectToMouse = createVector(pointer.lastPos, config.MOUSE_POS);
-  effectToMouse = unitVector(effectToMouse);
-  effectToMouse.x = effectToMouse.x * 10 + pointer.lastPos.x;
-  effectToMouse.y = effectToMouse.y * 10 + pointer.lastPos.y;
-
-  const x = scaleByPixelRatio(effectToMouse.x);
-  const y = scaleByPixelRatio(effectToMouse.y);
-
-  updatePointerMoveData(pointer, x, y);
+function followPath() {
+  followPosition(config.DEFAULT_PATH[config.PATH_IDX]);
+  config.PATH_IDX = wrap(++config.PATH_IDX, 0, config.DEFAULT_PATH.length - 1);
 }
 
-function followMouse() {
-  const position = config.MOUSE_POS;
+function followPosition(position) {
   position.x = scaleByPixelRatio(position.x);
   position.y = scaleByPixelRatio(position.y);
 
   updatePointerMoveData(pointer, position.x, position.y);
+}
+
+function approachPosition(position) {
+  let effectToPos = createVector(pointer.lastPos, position);
+  effectToPos = unitVector(effectToPos);
+  effectToPos.x =
+    effectToPos.x * config.MOUSE_SNAP_DISTANCE + pointer.lastPos.x;
+  effectToPos.y =
+    effectToPos.y * config.MOUSE_SNAP_DISTANCE + pointer.lastPos.y;
+
+  const x = scaleByPixelRatio(effectToPos.x);
+  const y = scaleByPixelRatio(effectToPos.y);
+
+  updatePointerMoveData(pointer, x, y);
 }
 
 function applyInputs() {
