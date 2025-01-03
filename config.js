@@ -7,9 +7,8 @@ const config = {
   PRESSURE: 0,
   PRESSURE_ITERATIONS: 20,
   CURL: 0,
-  SPLAT_RADIUS: 0.6,
+  SPLAT_RADIUS: 0.8,
   SPLAT_FORCE: 5000,
-  PAUSED: false,
   MOUSE_STOP_TIMER: 300,
   BACK_COLOR: { r: 7, g: 26, b: 69 },
   COLOR_UPDATE_SPEED: 0.75,
@@ -33,6 +32,7 @@ const config = {
   POSITION_UPDATE_SPEED: 60,
   CURRENT_POSITION_IDX: 0,
   POSITION_INTERPOLATION: 0,
+  FOLLOW_MOUSE: false,
   DEFAULT_PATH: [
     { x: 111, y: 1 },
     { x: 111, y: 1 },

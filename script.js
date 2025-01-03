@@ -607,13 +607,29 @@ if (pointer == null) pointer = new pointerPrototype();
 
 update();
 
+let timer;
+canvas.addEventListener("mousemove", (e) => {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(mouseStopped, config.MOUSE_STOP_TIMER);
+  config.FOLLOW_MOUSE = true;
+  updatePointerMoveData(
+    pointer,
+    scaleByPixelRatio(e.offsetX),
+    scaleByPixelRatio(e.offsetY)
+  );
+});
+
+function mouseStopped() {
+  config.FOLLOW_MOUSE = false;
+}
+
 function update() {
   const dt = calcDeltaTime();
   if (resizeCanvas()) initFramebuffers();
   updateColors(dt);
-  updatePosition(dt);
+  if (!config.FOLLOW_MOUSE) updatePosition(dt);
   applyInputs();
-  if (!config.PAUSED) step(dt);
+  step(dt);
   render(null);
   requestAnimationFrame(update);
 }
