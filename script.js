@@ -840,7 +840,6 @@ function correctRadius(radius) {
 }
 
 function updatePointerMoveData(pointer, posX, posY) {
-  setMousePos(posX, posY);
   pointer.lastPos = { x: posX, y: posY };
   pointer.prevTexcoordX = pointer.texcoordX;
   pointer.prevTexcoordY = pointer.texcoordY;
@@ -912,12 +911,6 @@ function hashCode(s) {
     hash |= 0; // Convert to 32bit integer
   }
   return hash;
-}
-
-const square = document.getElementsByTagName("div")[0];
-function setMousePos(x, y) {
-  square.style.left = `${x}px`;
-  square.style.top = `${y}px`;
 }
 
 function vectorSize(x, y) {
