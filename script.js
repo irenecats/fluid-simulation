@@ -31,7 +31,7 @@ const canvas = document.getElementsByTagName("canvas")[0];
 resizeCanvas();
 
 function pointerPrototype() {
-  this.id = -1;
+  this.lastPos = { x: 0, y: 0 };
   this.texcoordX = 0;
   this.texcoordY = 0;
   this.prevTexcoordX = 0;
@@ -142,79 +142,12 @@ function supportRenderTextureFormat(gl, internalFormat, format, type) {
   return status == gl.FRAMEBUFFER_COMPLETE;
 }
 
-function isMobile() {
-  return /Mobi|Android/i.test(navigator.userAgent);
-}
-
-function captureScreenshot() {
-  let res = getResolution(config.CAPTURE_RESOLUTION);
-  let target = createFBO(
-    res.width,
-    res.height,
-    ext.formatRGBA.internalFormat,
-    ext.formatRGBA.format,
-    ext.halfFloatTexType,
-    gl.NEAREST
-  );
-  render(target);
-
-  let texture = framebufferToTexture(target);
-  texture = normalizeTexture(texture, target.width, target.height);
-
-  let captureCanvas = textureToCanvas(texture, target.width, target.height);
-  let datauri = captureCanvas.toDataURL();
-  downloadURI("fluid.png", datauri);
-  URL.revokeObjectURL(datauri);
-}
-
-function framebufferToTexture(target) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-  let length = target.width * target.height * 4;
-  let texture = new Float32Array(length);
-  gl.readPixels(0, 0, target.width, target.height, gl.RGBA, gl.FLOAT, texture);
-  return texture;
-}
-
-function normalizeTexture(texture, width, height) {
-  let result = new Uint8Array(texture.length);
-  let id = 0;
-  for (let i = height - 1; i >= 0; i--) {
-    for (let j = 0; j < width; j++) {
-      let nid = i * width * 4 + j * 4;
-      result[nid + 0] = clamp01(texture[id + 0]) * 255;
-      result[nid + 1] = clamp01(texture[id + 1]) * 255;
-      result[nid + 2] = clamp01(texture[id + 2]) * 255;
-      result[nid + 3] = clamp01(texture[id + 3]) * 255;
-      id += 4;
-    }
-  }
-  return result;
-}
-
 function clamp01(input) {
-  return Math.min(Math.max(input, 0), 1);
+  return clamp(input, 0, 1);
 }
 
-function textureToCanvas(texture, width, height) {
-  let captureCanvas = document.createElement("canvas");
-  let ctx = captureCanvas.getContext("2d");
-  captureCanvas.width = width;
-  captureCanvas.height = height;
-
-  let imageData = ctx.createImageData(width, height);
-  imageData.data.set(texture);
-  ctx.putImageData(imageData, 0, 0);
-
-  return captureCanvas;
-}
-
-function downloadURI(filename, uri) {
-  let link = document.createElement("a");
-  link.download = filename;
-  link.href = uri;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function clamp(input, min, max) {
+  return Math.min(Math.max(input, min), max);
 }
 
 class Material {
@@ -612,11 +545,16 @@ canvas.addEventListener("mousemove", (e) => {
   if (timer) clearTimeout(timer);
   timer = setTimeout(mouseStopped, config.MOUSE_STOP_TIMER);
   config.FOLLOW_MOUSE = true;
-  updatePointerMoveData(
-    pointer,
-    scaleByPixelRatio(e.offsetX),
-    scaleByPixelRatio(e.offsetY)
+
+  const interPos = interpolate(
+    pointer.lastPos,
+    { x: e.offsetX, y: e.offsetY },
+    0.03
   );
+  config.AMMOUNT = {
+    x: clamp(interPos.x - pointer.lastPos.x, -10, 10),
+    y: clamp(interPos.y - pointer.lastPos.y, -10, 10),
+  };
 });
 
 function mouseStopped() {
@@ -627,7 +565,7 @@ function update() {
   const dt = calcDeltaTime();
   if (resizeCanvas()) initFramebuffers();
   updateColors(dt);
-  if (!config.FOLLOW_MOUSE) updatePosition(dt);
+  !config.FOLLOW_MOUSE ? updatePosition(dt) : updatePositionMouse(dt);
   applyInputs();
   step(dt);
   render(null);
@@ -667,18 +605,49 @@ function updateColors(dt) {
 }
 
 function updatePosition(dt) {
-  positionUpdateTimer += dt * config.POSITION_UPDATE_SPEED;
+  positionUpdateTimer += dt * config.POS_UPDATE_SPEED;
   if (positionUpdateTimer >= 1) {
     positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
 
-    const position = config.DEFAULT_PATH[config.CURRENT_POSITION_IDX];
+    const position = config.DEFAULT_PATH[config.CURRENT_POS_IDX];
     const x = scaleByPixelRatio(position.x);
     const y = scaleByPixelRatio(position.y);
 
+    setMousePos(x, y);
     updatePointerMoveData(pointer, x, y);
 
-    config.CURRENT_POSITION_IDX = wrap(
-      ++config.CURRENT_POSITION_IDX,
+    config.CURRENT_POS_IDX = wrap(
+      ++config.CURRENT_POS_IDX,
+      0,
+      config.DEFAULT_PATH.length - 1
+    );
+  }
+}
+const square = document.getElementsByTagName("div")[0];
+function setMousePos(x, y) {
+  square.style.left = `${x}px`;
+  square.style.top = `${y}px`;
+}
+
+function interpolate(a, b, frac) {
+  var nx = a.x + (b.x - a.x) * frac;
+  var ny = a.y + (b.y - a.y) * frac;
+  return { x: nx, y: ny };
+}
+
+function updatePositionMouse(dt) {
+  positionUpdateTimer += dt * config.POS_UPDATE_SPEED;
+  if (positionUpdateTimer >= 1) {
+    positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
+
+    const x = scaleByPixelRatio(pointer.lastPos.x + config.AMMOUNT.x);
+    const y = scaleByPixelRatio(pointer.lastPos.y + config.AMMOUNT.y);
+
+    setMousePos(x, y);
+    updatePointerMoveData(pointer, x, y);
+
+    config.CURRENT_POS_IDX = wrap(
+      ++config.CURRENT_POS_IDX,
       0,
       config.DEFAULT_PATH.length - 1
     );
@@ -866,6 +835,7 @@ function correctRadius(radius) {
 }
 
 function updatePointerMoveData(pointer, posX, posY) {
+  pointer.lastPos = { x: posX, y: posY };
   pointer.prevTexcoordX = pointer.texcoordX;
   pointer.prevTexcoordY = pointer.texcoordY;
   pointer.texcoordX = posX / canvas.width;
