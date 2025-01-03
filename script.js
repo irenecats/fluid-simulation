@@ -545,20 +545,19 @@ canvas.addEventListener("mousemove", (e) => {
   if (timer) clearTimeout(timer);
   timer = setTimeout(mouseStopped, config.MOUSE_STOP_TIMER);
   config.FOLLOW_MOUSE = true;
-
-  const interPos = interpolate(
-    pointer.lastPos,
-    { x: e.offsetX, y: e.offsetY },
-    0.03
-  );
-  config.AMMOUNT = {
-    x: clamp(interPos.x - pointer.lastPos.x, -10, 10),
-    y: clamp(interPos.y - pointer.lastPos.y, -10, 10),
-  };
+  config.MOUSE_POS = { x: e.offsetX, y: e.offsetY };
 });
 
 function mouseStopped() {
   config.FOLLOW_MOUSE = false;
+  config.MOUSE_REACHED = false;
+}
+
+function distance(p1, p2) {
+  let a = p1.x - p2.x;
+  let b = p1.y - p2.y;
+
+  return Math.sqrt(a * a + b * b);
 }
 
 function update() {
@@ -613,7 +612,6 @@ function updatePosition(dt) {
     const x = scaleByPixelRatio(position.x);
     const y = scaleByPixelRatio(position.y);
 
-    setMousePos(x, y);
     updatePointerMoveData(pointer, x, y);
 
     config.CURRENT_POS_IDX = wrap(
@@ -629,29 +627,54 @@ function setMousePos(x, y) {
   square.style.top = `${y}px`;
 }
 
-function interpolate(a, b, frac) {
-  var nx = a.x + (b.x - a.x) * frac;
-  var ny = a.y + (b.y - a.y) * frac;
-  return { x: nx, y: ny };
+function vectorSize(x, y) {
+  return Math.sqrt(x * x + y * y);
+}
+
+function unitVector(vector) {
+  const magnitude = vectorSize(vector.x, vector.y);
+  return { x: vector.x / magnitude, y: vector.y / magnitude };
+}
+
+function createVector(p1, p2) {
+  return { x: p2.x - p1.x, y: p2.y - p1.y };
 }
 
 function updatePositionMouse(dt) {
   positionUpdateTimer += dt * config.POS_UPDATE_SPEED;
   if (positionUpdateTimer >= 1) {
     positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
+    if (
+      !config.MOUSE_REACHED &&
+      distance(pointer.lastPos, config.MOUSE_POS) <= config.MOUSE_SNAP_DISTANCE
+    ) {
+      config.MOUSE_REACHED = true;
+    }
 
-    const x = scaleByPixelRatio(pointer.lastPos.x + config.AMMOUNT.x);
-    const y = scaleByPixelRatio(pointer.lastPos.y + config.AMMOUNT.y);
-
-    setMousePos(x, y);
-    updatePointerMoveData(pointer, x, y);
-
-    config.CURRENT_POS_IDX = wrap(
-      ++config.CURRENT_POS_IDX,
-      0,
-      config.DEFAULT_PATH.length - 1
-    );
+    !config.MOUSE_REACHED ? approachMouse() : followMouse();
   }
+}
+
+function approachMouse() {
+  if (!config.MOUSE_REACHED) {
+    let effectToMouse = createVector(pointer.lastPos, config.MOUSE_POS);
+    effectToMouse = unitVector(effectToMouse);
+    effectToMouse.x = effectToMouse.x * 10 + pointer.lastPos.x;
+    effectToMouse.y = effectToMouse.y * 10 + pointer.lastPos.y;
+
+    const x = scaleByPixelRatio(effectToMouse.x);
+    const y = scaleByPixelRatio(effectToMouse.y);
+
+    updatePointerMoveData(pointer, x, y);
+  }
+}
+
+function followMouse() {
+  const position = config.MOUSE_POS;
+  position.x = scaleByPixelRatio(position.x);
+  position.y = scaleByPixelRatio(position.y);
+
+  updatePointerMoveData(pointer, position.x, position.y);
 }
 
 function applyInputs() {
@@ -835,6 +858,7 @@ function correctRadius(radius) {
 }
 
 function updatePointerMoveData(pointer, posX, posY) {
+  setMousePos(posX, posY);
   pointer.lastPos = { x: posX, y: posY };
   pointer.prevTexcoordX = pointer.texcoordX;
   pointer.prevTexcoordY = pointer.texcoordY;

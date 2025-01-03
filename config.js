@@ -30,10 +30,11 @@ const config = {
   ],
   POS_UPDATE_SPEED: 60,
   CURRENT_POS_IDX: 0,
-  POSITION_INTERPOLATION: 0,
   MOUSE_STOP_TIMER: 900,
+  MOUSE_POS: { x: 0, y: 0 },
   FOLLOW_MOUSE: false,
-  AMMOUNT: { x: 0, y: 0 },
+  MOUSE_REACHED: false,
+  MOUSE_SNAP_DISTANCE: 10,
   DEFAULT_PATH: [
     { x: 111, y: 1 },
     { x: 111, y: 1 },
