@@ -551,13 +551,7 @@ canvas.addEventListener("mousemove", (e) => {
 function mouseStopped() {
   config.FOLLOW_MOUSE = false;
   config.MOUSE_REACHED = false;
-}
-
-function distance(p1, p2) {
-  let a = p1.x - p2.x;
-  let b = p1.y - p2.y;
-
-  return Math.sqrt(a * a + b * b);
+  config.RETURN_TO_PATH = true;
 }
 
 function update() {
@@ -595,8 +589,8 @@ function updateColors(dt) {
   if (colorUpdateTimer >= 1) {
     colorUpdateTimer = wrap(colorUpdateTimer, 0, 1);
     pointer.color = generateColor();
-    config.CURRENT_COLOR_IDX = wrap(
-      ++config.CURRENT_COLOR_IDX,
+    config.COLOR_IDX = wrap(
+      ++config.COLOR_IDX,
       0,
       config.COLOR_PALETTE.length - 1
     );
@@ -608,36 +602,41 @@ function updatePosition(dt) {
   if (positionUpdateTimer >= 1) {
     positionUpdateTimer = wrap(positionUpdateTimer, 0, 1);
 
-    const position = config.DEFAULT_PATH[config.CURRENT_POS_IDX];
-    const x = scaleByPixelRatio(position.x);
-    const y = scaleByPixelRatio(position.y);
+    if (
+      config.RETURN_TO_PATH &&
+      distance(pointer.lastPos, config.DEFAULT_PATH[config.PATH_IDX]) <=
+        config.MOUSE_SNAP_DISTANCE
+    ) {
+      config.RETURN_TO_PATH = false;
+    }
 
-    updatePointerMoveData(pointer, x, y);
-
-    config.CURRENT_POS_IDX = wrap(
-      ++config.CURRENT_POS_IDX,
-      0,
-      config.DEFAULT_PATH.length - 1
-    );
+    config.RETURN_TO_PATH ? approachPath() : followPath();
   }
 }
-const square = document.getElementsByTagName("div")[0];
-function setMousePos(x, y) {
-  square.style.left = `${x}px`;
-  square.style.top = `${y}px`;
+
+function approachPath() {
+  let effectToPath = createVector(
+    pointer.lastPos,
+    config.DEFAULT_PATH[config.PATH_IDX]
+  );
+  effectToPath = unitVector(effectToPath);
+  effectToPath.x = effectToPath.x * 10 + pointer.lastPos.x;
+  effectToPath.y = effectToPath.y * 10 + pointer.lastPos.y;
+
+  const x = scaleByPixelRatio(effectToPath.x);
+  const y = scaleByPixelRatio(effectToPath.y);
+
+  updatePointerMoveData(pointer, x, y);
 }
 
-function vectorSize(x, y) {
-  return Math.sqrt(x * x + y * y);
-}
+function followPath() {
+  const position = config.DEFAULT_PATH[config.PATH_IDX];
+  const x = scaleByPixelRatio(position.x);
+  const y = scaleByPixelRatio(position.y);
 
-function unitVector(vector) {
-  const magnitude = vectorSize(vector.x, vector.y);
-  return { x: vector.x / magnitude, y: vector.y / magnitude };
-}
+  updatePointerMoveData(pointer, x, y);
 
-function createVector(p1, p2) {
-  return { x: p2.x - p1.x, y: p2.y - p1.y };
+  config.PATH_IDX = wrap(++config.PATH_IDX, 0, config.DEFAULT_PATH.length - 1);
 }
 
 function updatePositionMouse(dt) {
@@ -656,17 +655,15 @@ function updatePositionMouse(dt) {
 }
 
 function approachMouse() {
-  if (!config.MOUSE_REACHED) {
-    let effectToMouse = createVector(pointer.lastPos, config.MOUSE_POS);
-    effectToMouse = unitVector(effectToMouse);
-    effectToMouse.x = effectToMouse.x * 10 + pointer.lastPos.x;
-    effectToMouse.y = effectToMouse.y * 10 + pointer.lastPos.y;
+  let effectToMouse = createVector(pointer.lastPos, config.MOUSE_POS);
+  effectToMouse = unitVector(effectToMouse);
+  effectToMouse.x = effectToMouse.x * 10 + pointer.lastPos.x;
+  effectToMouse.y = effectToMouse.y * 10 + pointer.lastPos.y;
 
-    const x = scaleByPixelRatio(effectToMouse.x);
-    const y = scaleByPixelRatio(effectToMouse.y);
+  const x = scaleByPixelRatio(effectToMouse.x);
+  const y = scaleByPixelRatio(effectToMouse.y);
 
-    updatePointerMoveData(pointer, x, y);
-  }
+  updatePointerMoveData(pointer, x, y);
 }
 
 function followMouse() {
@@ -882,7 +879,7 @@ function correctDeltaY(delta) {
 }
 
 function generateColor() {
-  const color = config.COLOR_PALETTE.at(config.CURRENT_COLOR_IDX);
+  const color = config.COLOR_PALETTE.at(config.COLOR_IDX);
   let c = { r: color.r, g: color.g, b: color.b };
   c.r *= 0.15;
   c.g *= 0.15;
@@ -930,4 +927,30 @@ function hashCode(s) {
     hash |= 0; // Convert to 32bit integer
   }
   return hash;
+}
+
+const square = document.getElementsByTagName("div")[0];
+function setMousePos(x, y) {
+  square.style.left = `${x}px`;
+  square.style.top = `${y}px`;
+}
+
+function vectorSize(x, y) {
+  return Math.sqrt(x * x + y * y);
+}
+
+function unitVector(vector) {
+  const magnitude = vectorSize(vector.x, vector.y);
+  return { x: vector.x / magnitude, y: vector.y / magnitude };
+}
+
+function createVector(p1, p2) {
+  return { x: p2.x - p1.x, y: p2.y - p1.y };
+}
+
+function distance(p1, p2) {
+  let a = p1.x - p2.x;
+  let b = p1.y - p2.y;
+
+  return Math.sqrt(a * a + b * b);
 }
